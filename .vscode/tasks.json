@@ -1,0 +1,29 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Build EdaCal",
+      "type": "shell",
+      "command": "C:/msys64/mingw64/bin/g++.exe",
+      "args": [
+        "-std=c++11",
+        "-O2",
+        "-o", "edacal",
+        "edacal.cpp"
+      ],
+      "group": { "kind": "build", "isDefault": true },
+      "problemMatcher": ["$gcc"]
+    },
+    {
+      "label": "Run tests",
+      "type": "shell",
+      "command": "powershell",
+      "args": [
+        "-NoProfile",
+        "-Command",
+        "Get-Content edacal_tests_v1.in | ./edacal.exe | Select-String '^(ans ->|Error:)' | Set-Content salida.txt; fc edacal_expected_v1.txt salida.txt"
+      ],
+      "dependsOn": "Build EdaCal"
+    }
+  ]
+}

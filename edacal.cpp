@@ -1,8 +1,12 @@
 // ================================
-// EdaCal — Skeleton v1 (C++11)
+// EdaCal — Skeleton v2.1 (C++11)
+// + Variables (ans y nombres arbitrarios), asignación: x = expr
+// + Comandos: show <var>, prefix, posfix, tree, help
+// + CLI: --version
+// + Funciones: sqrt, sin, cos, tan, log (base10), ln
+// + Constantes: pi, e
 // Estructuras: LinkedList, Stack, Árbol de Expresión
 // Flujo: Tokenizar (lista) -> Infija→Posfija (pila) -> Árbol -> Evaluar
-// TODO próximos pasos: variables, comandos (show, tree, prefix, posfix), sqrt, potencia
 // ================================
 
 #include <bits/stdc++.h>
@@ -10,7 +14,14 @@
 using namespace std;
 
 // -------------------- Utilidad --------------------
-static inline bool isSpace(char c){ return c==' '||c=='\t'||c=='\n' || c=='\r'; }
+static inline bool isSpace(char c){ return c==' '||c=='	'||c=='
+' || c=='
+'; }
+static inline bool isDigit(char c){ return c>='0' && c<='9'; }
+static inline bool isAlpha(char c){ return (c>='a'&&c<='z')||(c>='A'&&c<='Z')||c=='_'; }
+static inline string ltrim(string s){ size_t i=0; while(i<s.size() && isSpace(s[i])) ++i; return s.substr(i); }
+static inline string rtrim(string s){ int i=(int)s.size()-1; while(i>=0 && isSpace(s[i])) --i; return s.substr(0,i+1); }
+static inline string trim(string s){ return rtrim(ltrim(s)); }
 static inline bool isDigit(char c){ return c>='0' && c<='9'; }
 static inline bool isAlpha(char c){ return (c>='a'&&c<='z')||(c>='A'&&c<='Z')||c=='_'; }
 
@@ -67,6 +78,10 @@ public:
 
 // -------------------- Tokenizer: string -> LinkedList<Token> (infija) --------------------
 class Tokenizer {
+    static bool isFunc(const string& name){
+        static const unordered_set<string> F = {"sqrt","sin","cos","tan","log","ln"};
+        return F.count(name)>0;
+    }
 public:
     LinkedList<Token> tokenize(const string& s){
         LinkedList<Token> out;
@@ -82,10 +97,16 @@ public:
                 continue;
             }
             if(isAlpha(s[i])){
-                size_t j=i; ++i; while(i<n && (isAlpha(s[i])||isDigit(s[i]))) ++i; // identificador o función (p.ej., sqrt)
+                size_t j=i; ++i; while(i<n && (isAlpha(s[i])||isDigit(s[i]))) ++i; // identificador o función
                 string name = s.substr(j, i-j);
-                Token t; t.type=TokenType::Identifier; t.text=name; t.value=0; t.precedence=-1; t.rightAssoc=false; t.unary=false;
-                out.push_back(t); continue;
+                if(isFunc(name)){
+                    Token t; t.type=TokenType::Operator; t.text=name; t.value=0; t.precedence=4; t.rightAssoc=true; t.unary=true;
+                    out.push_back(t);
+                } else {
+                    Token t; t.type=TokenType::Identifier; t.text=name; t.value=0; t.precedence=-1; t.rightAssoc=false; t.unary=false;
+                    out.push_back(t);
+                }
+                continue;
             }
             // operadores y paréntesis
             char c=s[i++];
@@ -103,6 +124,7 @@ public:
         return out;
     }
 };
+
 
 // -------------------- Helpers de operadores --------------------
 static inline bool isOperator(const Token& t){ return t.type==TokenType::Operator || (t.type==TokenType::Identifier && (t.text=="sqrt")); }
@@ -219,17 +241,23 @@ struct VarEnv {
     void set(const string& k, double v){ vars[k]=v; }
 };
 
+// -------------------- Evaluador con entorno de variables --------------------
+struct VarEnv {
+    unordered_map<string,double> vars;
+    bool has(const string& k) const { return vars.find(k)!=vars.end(); }
+    double get(const string& k) const { auto it=vars.find(k); if(it==vars.end()) throw runtime_error("Variable no definida: "+k); return it->second; }
+    void set(const string& k, double v){ vars[k]=v; }
+};
+
 class Evaluator {
 public:
     explicit Evaluator(VarEnv* env):env(env){}
-    double eval(ExprNode* n){ if(!n) throw runtime_error("Árbol vacío"); return evalNode(n);
-    }
+    double eval(ExprNode* n){ if(!n) throw runtime_error("Arbol vacio"); return evalNode(n); }
 private:
     VarEnv* env;
     double evalNode(ExprNode* n){
         if(n->tok.type==TokenType::Number) return n->tok.value;
         if(n->tok.type==TokenType::Identifier && n->tok.text!="sqrt"){
-            // Soporte mínimo: variable ans (y futuras variables del entorno)
             if(env){
                 if(env->has(n->tok.text)) return env->get(n->tok.text);
                 throw runtime_error("Variable no definida: "+n->tok.text);
@@ -241,7 +269,12 @@ private:
             double a = evalNode(n->right);
             if(n->tok.text=="-") return -a;
             if(n->tok.text=="+") return +a;
-            if(n->tok.text=="sqrt"){ if(a<0) throw runtime_error("sqrt de negativo"); return sqrt(a);}            
+            if(n->tok.text=="sqrt"){ if(a<0) throw runtime_error("sqrt de negativo"); return sqrt(a);}
+            if(n->tok.text=="sin") return sin(a);
+            if(n->tok.text=="cos") return cos(a);
+            if(n->tok.text=="tan") return tan(a);
+            if(n->tok.text=="log") { if(a<=0) throw runtime_error("log de no-positivo"); return log10(a); }
+            if(n->tok.text=="ln")  { if(a<=0) throw runtime_error("ln de no-positivo");  return log(a); }      
         } else {
             double a = evalNode(n->left);
             double b = evalNode(n->right);
@@ -256,43 +289,143 @@ private:
 };
 
 // -------------------- REPL mínimo --------------------
-int main(){
+int main(int argc, char** argv)
+{
     ios::sync_with_stdio(false); cin.tie(nullptr);
     bool interactive = isatty(fileno(stdin));
-if (interactive) cout << "EdaCal v1 - escribe una expresion o 'exit'\n";
+    if (argc>1 && string(argv[1])=="--version") { 
+    cout << "EdaCal v2.1" << "\n"; 
+    return 0; 
+}
+if (interactive) cout << "EdaCal v2.1 - escribe una expresion o 'exit'\n";
+
 
     string line; Tokenizer tk; ShuntingYard sy; 
-    VarEnv env; env.set("ans", 0.0);
+    VarEnv env; 
+    env.set("ans", 0.0);
+    env.set("pi", 3.14159265358979323846);
+    env.set("e",  2.71828182845904523536);
     Evaluator ev(&env);
+
+
+    // almacenamos la ultima expresion en posfija para prefix/posfix/tree
+    vector<Token> lastPostfix;
+    auto savePostfix = [&](LinkedList<Token>& post){
+        lastPostfix.clear();
+        for(auto it=post.begin(); it!=post.end(); ++it) lastPostfix.push_back(*it);
+    };
+
+    auto rebuildTreeFromLast = [&](){
+        if(lastPostfix.empty()) throw runtime_error("No hay expresion previa");
+        LinkedList<Token> post;
+        for(const auto& t: lastPostfix) post.push_back(t);
+        ExprTree* tree = new ExprTree();
+        tree->buildFromPostfix(post);
+        return tree; // caller borra
+    };
+
+    auto printPosfixFromLast = [&](){
+        if(lastPostfix.empty()) throw runtime_error("No hay expresion previa");
+        for(const auto& t: lastPostfix) cout << ExprTree::tokenToStr(t) << ' ';
+        cout << "
+";
+    };
+
+    auto findTopLevelEq = [&](const string& s)->int{
+        int bal=0; for(int i=0;i<(int)s.size();++i){ char c=s[i];
+            if(c=='(') ++bal; else if(c==')') --bal; else if(c=='=' && bal==0) return i;
+        } return -1;
+    };
 
     while(true){
         if (interactive) cout << ">> ";
         if(!getline(cin, line)) break;
+        line = trim(line);
         if(line=="exit") break;
+        if(line.empty()) continue;
 
-        // comando simple: show <var>
-        if(line.size()>5 && line.substr(0,5)=="show "){
-            string var = line.substr(5);
-            try{
-                double v = env.get(var);
-cout << var << " -> " << fixed << setprecision(10) << v << "\n";
-            }catch(const exception& ex){
-if (interactive) cerr << "Error: " << ex.what() << "\n"; else cout << "Error: " << ex.what() << "\n";
-            }
+        // comandos que usan la ultima expresion
+        if(line=="help"){
+    cout << "Comandos disponibles:\n"
+         << "  help               -> esta ayuda\n"
+         << "  --version          -> imprime la version y termina\n"
+         << "  show <var>         -> muestra valor de variable\n"
+         << "  posfix | prefix    -> imprime notacion de ultima expresion\n"
+         << "  tree               -> imprime arbol de ultima expresion\n"
+         << "Asignacion: x = expresion\n"
+         << "Funciones: sqrt, sin, cos, tan, log(base10), ln\n"
+         << "Constantes: pi, e (radianes)\n";
+    continue;
+}
+
+        if(line=="posfix"){
+            try{ printPosfixFromLast(); } catch(const exception& ex){ if(interactive) cerr << "Error: "<<ex.what()<<"
+"; else cout<<"Error: "<<ex.what()<<"
+"; }
+            continue;
+        }
+        if(line=="prefix"){
+            try{ unique_ptr<ExprTree> t(rebuildTreeFromLast()); t->printPrefix(t->root); cout << "
+"; } catch(const exception& ex){ if(interactive) cerr<<"Error: "<<ex.what()<<"
+"; else cout<<"Error: "<<ex.what()<<"
+"; }
+            continue;
+        }
+        if(line=="tree"){
+            try{ unique_ptr<ExprTree> t(rebuildTreeFromLast()); t->printTree(t->root); } catch(const exception& ex){ if(interactive) cerr<<"Error: "<<ex.what()<<"
+"; else cout<<"Error: "<<ex.what()<<"
+"; }
             continue;
         }
 
+        // show <var>
+        if(line.size()>5 && line.substr(0,5)=="show "){
+            string var = trim(line.substr(5));
+            try{ double v = env.get(var); cout << var << " -> " << fixed << setprecision(10) << v << "
+"; }
+            catch(const exception& ex){ if(interactive) cerr<<"Error: "<<ex.what()<<"
+"; else cout<<"Error: "<<ex.what()<<"
+"; }
+            continue;
+        }
+
+        // asignacion: x = expr (nivel superior)
+        int posEq = findTopLevelEq(line);
+        if(posEq>0){
+            string lhs = trim(line.substr(0,posEq));
+            string rhs = trim(line.substr(posEq+1));
+            if(lhs.empty() || !isAlpha(lhs[0])){ if(interactive) cerr<<"Error: LHS invalido"<<"
+"; else cout<<"Error: LHS invalido
+"; continue; }
+            try{
+                auto infix = tk.tokenize(rhs);
+                auto postfix = sy.toPostfix(infix);
+                savePostfix(postfix);
+                ExprTree tree; tree.buildFromPostfix(postfix);
+                double res = ev.eval(tree.root);
+                env.set(lhs, res);
+                env.set("ans", res);
+                cout << lhs << " -> " << fixed << setprecision(10) << res << "
+";
+            } catch(const exception& ex){ if(interactive) cerr<<"Error: "<<ex.what()<<"
+"; else cout<<"Error: "<<ex.what()<<"
+"; }
+            continue;
+        }
+
+        // evaluacion normal
         try{
             auto infix = tk.tokenize(line);
             auto postfix = sy.toPostfix(infix);
+            savePostfix(postfix);
             ExprTree tree; tree.buildFromPostfix(postfix);
             double res = ev.eval(tree.root);
             env.set("ans", res);
-cout << "ans -> " << fixed << setprecision(10) << res << "\n";
-        } catch(const exception& ex){
-if (interactive) cerr << "Error: " << ex.what() << "\n";
-else cout << "Error: " << ex.what() << "\n";
-        }
+            cout << "ans -> " << fixed << setprecision(10) << res << "
+";
+        } catch(const exception& ex){ if (interactive) cerr << "Error: " << ex.what() << "
+"; else cout << "Error: " << ex.what() << "
+"; }
     }
     return 0;
 }

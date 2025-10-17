@@ -1,40 +1,40 @@
 // ================================
 // EdaCal — Skeleton v2.1 (C++11)
-// + Variables (ans y nombres arbitrarios), asignación: x = expr
+// + Variables (ans y nombres arbitrarios), asignacion: x = expr
 // + Comandos: show <var>, prefix, posfix, tree, help
 // + CLI: --version
 // + Funciones: sqrt, sin, cos, tan, log (base10), ln
 // + Constantes: pi, e
-// Estructuras: LinkedList, Stack, Árbol de Expresión
-// Flujo: Tokenizar (lista) -> Infija→Posfija (pila) -> Árbol -> Evaluar
+// Estructuras: LinkedList, Stack, Arbol de Expresion
+// Flujo: Tokenizar (lista) -> Infija→Posfija (pila) -> Arbol -> Evaluar
 // ================================
 
 #include <bits/stdc++.h>
-#include <unistd.h>
+#ifdef _WIN32
+  #include <io.h>
+  #define isatty _isatty
+  #define fileno _fileno
+#endif
 using namespace std;
 
 // -------------------- Utilidad --------------------
-static inline bool isSpace(char c){ return c==' '||c=='	'||c=='
-' || c=='
-'; }
-static inline bool isDigit(char c){ return c>='0' && c<='9'; }
-static inline bool isAlpha(char c){ return (c>='a'&&c<='z')||(c>='A'&&c<='Z')||c=='_'; }
+static inline bool isSpace(char c){ return c==' '||c=='\t'||c=='\n'||c=='\r'; }
+static inline bool isDigitC(char c){ return c>='0' && c<='9'; }
+static inline bool isAlphaC(char c){ return (c>='a'&&c<='z')||(c>='A'&&c<='Z')||c=='_'; }
 static inline string ltrim(string s){ size_t i=0; while(i<s.size() && isSpace(s[i])) ++i; return s.substr(i); }
 static inline string rtrim(string s){ int i=(int)s.size()-1; while(i>=0 && isSpace(s[i])) --i; return s.substr(0,i+1); }
 static inline string trim(string s){ return rtrim(ltrim(s)); }
-static inline bool isDigit(char c){ return c>='0' && c<='9'; }
-static inline bool isAlpha(char c){ return (c>='a'&&c<='z')||(c>='A'&&c<='Z')||c=='_'; }
 
 // -------------------- Token --------------------
 enum class TokenType { Number, Identifier, Operator, LParen, RParen, End };
 
 struct Token {
-    TokenType type;
+    TokenType type{TokenType::End};
     string text;   // para operadores e identificadores
-    double value;  // para números
+    double value{0.0};  // para numeros
     int precedence{ -1 }; // solo si es operador
     bool rightAssoc{ false }; // ^ es asociativo a derecha
-    bool unary{ false }; // para +/− unario y funciones tipo sqrt
+    bool unary{ false }; // para +/− unario y funciones tipo sqrt/sin/etc.
 };
 
 // -------------------- LinkedList<T> (simple) --------------------
@@ -57,7 +57,7 @@ public:
     size_t size() const { return n; }
     void clear(){ Node* p=head; while(p){ Node* q=p->next; delete p; p=q; } head=tail=nullptr; n=0; }
     iterator begin() { return iterator(head); }
-    iterator end() { return iterator(nullptr); }
+    iterator end()   { return iterator(nullptr); }
 };
 
 // -------------------- Stack<T> usando lista enlazada --------------------
@@ -88,16 +88,15 @@ public:
         size_t i=0; size_t n=s.size();
         while(i<n){
             if(isSpace(s[i])){ ++i; continue; }
-            if(isDigit(s[i]) || (s[i]=='.')){
+            if(isDigitC(s[i]) || (s[i]=='.')){
                 size_t j=i; bool dot=(s[i]=='.'); ++i;
-                while(i<n && (isDigit(s[i]) || (!dot && s[i]=='.'))){ dot = dot || (s[i]=='.'); ++i; }
+                while(i<n && (isDigitC(s[i]) || (!dot && s[i]=='.'))){ dot = dot || (s[i]=='.'); ++i; }
                 double val = stod(s.substr(j, i-j));
                 Token t; t.type=TokenType::Number; t.text=""; t.value=val; t.precedence=-1; t.rightAssoc=false; t.unary=false;
-                out.push_back(t);
-                continue;
+                out.push_back(t); continue;
             }
-            if(isAlpha(s[i])){
-                size_t j=i; ++i; while(i<n && (isAlpha(s[i])||isDigit(s[i]))) ++i; // identificador o función
+            if(isAlphaC(s[i])){
+                size_t j=i; ++i; while(i<n && (isAlphaC(s[i])||isDigitC(s[i]))) ++i; // identificador o funcion
                 string name = s.substr(j, i-j);
                 if(isFunc(name)){
                     Token t; t.type=TokenType::Operator; t.text=name; t.value=0; t.precedence=4; t.rightAssoc=true; t.unary=true;
@@ -108,7 +107,7 @@ public:
                 }
                 continue;
             }
-            // operadores y paréntesis
+            // operadores y parentesis
             char c=s[i++];
             if(c=='('){ Token t; t.type=TokenType::LParen; t.text="("; t.value=0; t.precedence=-1; t.rightAssoc=false; t.unary=false; out.push_back(t); continue; }
             if(c==')'){ Token t; t.type=TokenType::RParen; t.text=")"; t.value=0; t.precedence=-1; t.rightAssoc=false; t.unary=false; out.push_back(t); continue; }
@@ -125,17 +124,9 @@ public:
     }
 };
 
-
 // -------------------- Helpers de operadores --------------------
-static inline bool isOperator(const Token& t){ return t.type==TokenType::Operator || (t.type==TokenType::Identifier && (t.text=="sqrt")); }
-static inline int precedence(const Token& t){
-    if(t.type==TokenType::Identifier && t.text=="sqrt") return 4; // mayor que ^ (unario)
-    return t.precedence;
-}
-static inline bool rightAssoc(const Token& t){
-    if(t.type==TokenType::Identifier && t.text=="sqrt") return true; // unario derecha
-    return t.rightAssoc;
-}
+static inline int precedence(const Token& t){ return t.precedence; }
+static inline bool rightAssoc(const Token& t){ return t.rightAssoc; }
 
 // -------------------- Shunting Yard: infija -> posfija (lista) --------------------
 class ShuntingYard {
@@ -145,23 +136,17 @@ public:
         Token prev; bool hasPrev=false;
         for(auto it=infix.begin(); it!=infix.end(); ++it){ Token t=*it;
             if(t.type==TokenType::Number || t.type==TokenType::Identifier){
-                // Si identifier es función conocida (sqrt), trátala como operador unario; si no, como variable (por ahora a salida)
-                if(t.type==TokenType::Identifier && t.text=="sqrt"){ t.type=TokenType::Operator; t.unary=true; }
-                if(t.type==TokenType::Operator && t.unary){
-                    // caerá en lógica de operador abajo
-                } else {
-                    out.push_back(t); hasPrev=true; prev=t; continue;
-                }
+                out.push_back(t); hasPrev=true; prev=t; continue;
             }
             if(t.type==TokenType::LParen){ ops.push(t); hasPrev=false; continue; }
             if(t.type==TokenType::RParen){
                 while(!ops.empty() && ops.top().type!=TokenType::LParen){ out.push_back(ops.top()); ops.pop(); }
-                if(ops.empty()) throw runtime_error("Paréntesis desbalanceados");
+                if(ops.empty()) throw runtime_error("Parentesis desbalanceados");
                 ops.pop(); // saca '('
                 hasPrev=true; continue;
             }
             if(t.type==TokenType::Operator){
-                // detectar unario para +/− al inicio o después de '(' u otro operador
+                // detectar unario para +/− al inicio o despues de '(' u otro operador
                 if((!hasPrev) || prev.type==TokenType::LParen || prev.type==TokenType::Operator){
                     if(t.text=="+"||t.text=="-") { t.unary=true; t.precedence=4; t.rightAssoc=true; }
                 }
@@ -174,14 +159,14 @@ public:
             }
         }
         while(!ops.empty()){
-            if(ops.top().type==TokenType::LParen||ops.top().type==TokenType::RParen) throw runtime_error("Paréntesis desbalanceados");
+            if(ops.top().type==TokenType::LParen||ops.top().type==TokenType::RParen) throw runtime_error("Parentesis desbalanceados");
             out.push_back(ops.top()); ops.pop();
         }
         return out;
     }
 };
 
-// -------------------- Árbol de Expresión --------------------
+// -------------------- Arbol de Expresion --------------------
 struct ExprNode {
     Token tok; ExprNode* left{nullptr}; ExprNode* right{nullptr};
     explicit ExprNode(const Token& t):tok(t){}
@@ -196,11 +181,11 @@ public:
     void buildFromPostfix(LinkedList<Token>& post){
         Stack<ExprNode*> st;
         for(auto it=post.begin(); it!=post.end(); ++it){ Token t=*it;
-            if(t.type==TokenType::Number || (t.type==TokenType::Identifier && t.text!="sqrt")){
+            if(t.type==TokenType::Number || t.type==TokenType::Identifier){
                 st.push(new ExprNode(t));
-            } else if(t.type==TokenType::Operator || (t.type==TokenType::Identifier && t.text=="sqrt")){
+            } else if(t.type==TokenType::Operator){
                 ExprNode* node=new ExprNode(t);
-                if(t.unary || t.text=="sqrt"){
+                if(t.unary){
                     if(st.empty()) throw runtime_error("Operador unario sin operando");
                     node->right = st.top(); st.pop();
                 } else {
@@ -211,7 +196,7 @@ public:
                 st.push(node);
             }
         }
-        if(st.size()!=1) throw runtime_error("Expresión inválida");
+        if(st.size()!=1) throw runtime_error("Expresion invalida");
         root=st.top(); st.pop();
     }
 
@@ -232,15 +217,6 @@ public:
     }
 };
 
-// -------------------- Evaluador --------------------
-// -------------------- Evaluador con entorno de variables --------------------
-struct VarEnv {
-    unordered_map<string,double> vars;
-    bool has(const string& k) const { return vars.find(k)!=vars.end(); }
-    double get(const string& k) const { auto it=vars.find(k); if(it==vars.end()) throw runtime_error("Variable no definida: "+k); return it->second; }
-    void set(const string& k, double v){ vars[k]=v; }
-};
-
 // -------------------- Evaluador con entorno de variables --------------------
 struct VarEnv {
     unordered_map<string,double> vars;
@@ -257,7 +233,7 @@ private:
     VarEnv* env;
     double evalNode(ExprNode* n){
         if(n->tok.type==TokenType::Number) return n->tok.value;
-        if(n->tok.type==TokenType::Identifier && n->tok.text!="sqrt"){
+        if(n->tok.type==TokenType::Identifier){
             if(env){
                 if(env->has(n->tok.text)) return env->get(n->tok.text);
                 throw runtime_error("Variable no definida: "+n->tok.text);
@@ -265,16 +241,16 @@ private:
             throw runtime_error("Variable no soportada: "+n->tok.text);
         }
         // Operadores
-        if(n->tok.unary || n->tok.text=="sqrt"){
+        if(n->tok.unary){
             double a = evalNode(n->right);
             if(n->tok.text=="-") return -a;
             if(n->tok.text=="+") return +a;
-            if(n->tok.text=="sqrt"){ if(a<0) throw runtime_error("sqrt de negativo"); return sqrt(a);}
+            if(n->tok.text=="sqrt"){ if(a<0) throw runtime_error("sqrt de negativo"); return sqrt(a);}            
             if(n->tok.text=="sin") return sin(a);
             if(n->tok.text=="cos") return cos(a);
             if(n->tok.text=="tan") return tan(a);
             if(n->tok.text=="log") { if(a<=0) throw runtime_error("log de no-positivo"); return log10(a); }
-            if(n->tok.text=="ln")  { if(a<=0) throw runtime_error("ln de no-positivo");  return log(a); }      
+            if(n->tok.text=="ln")  { if(a<=0) throw runtime_error("ln de no-positivo");  return log(a); }
         } else {
             double a = evalNode(n->left);
             double b = evalNode(n->right);
@@ -284,29 +260,20 @@ private:
             if(n->tok.text=="/") { if(b==0) throw runtime_error("division por cero"); return a/b; }
             if(n->tok.text=="^") return pow(a,b);
         }
-        throw runtime_error("Operador desconocido: "+n->tok.text);
+        throw runtime_error(string("Operador desconocido: ")+n->tok.text);
     }
 };
 
-// -------------------- REPL mínimo --------------------
-int main(int argc, char** argv)
-{
+// -------------------- REPL --------------------
+int main(int argc, char** argv){
     ios::sync_with_stdio(false); cin.tie(nullptr);
     bool interactive = isatty(fileno(stdin));
-    if (argc>1 && string(argv[1])=="--version") { 
-    cout << "EdaCal v2.1" << "\n"; 
-    return 0; 
-}
-if (interactive) cout << "EdaCal v2.1 - escribe una expresion o 'exit'\n";
-
+    if (argc>1 && string(argv[1])=="--version") { cout << "EdaCal v2.1" << "\n"; return 0; }
+    if (interactive) cout << "EdaCal v2.1 - escribe una expresion o 'exit'\n";
 
     string line; Tokenizer tk; ShuntingYard sy; 
-    VarEnv env; 
-    env.set("ans", 0.0);
-    env.set("pi", 3.14159265358979323846);
-    env.set("e",  2.71828182845904523536);
+    VarEnv env; env.set("ans", 0.0); env.set("pi", 3.14159265358979323846); env.set("e", 2.71828182845904523536);
     Evaluator ev(&env);
-
 
     // almacenamos la ultima expresion en posfija para prefix/posfix/tree
     vector<Token> lastPostfix;
@@ -327,8 +294,7 @@ if (interactive) cout << "EdaCal v2.1 - escribe una expresion o 'exit'\n";
     auto printPosfixFromLast = [&](){
         if(lastPostfix.empty()) throw runtime_error("No hay expresion previa");
         for(const auto& t: lastPostfix) cout << ExprTree::tokenToStr(t) << ' ';
-        cout << "
-";
+        cout << "\n";
     };
 
     auto findTopLevelEq = [&](const string& s)->int{
@@ -344,59 +310,141 @@ if (interactive) cout << "EdaCal v2.1 - escribe una expresion o 'exit'\n";
         if(line=="exit") break;
         if(line.empty()) continue;
 
-        // comandos que usan la ultima expresion
+        // ayuda
         if(line=="help"){
-    cout << "Comandos disponibles:\n"
-         << "  help               -> esta ayuda\n"
-         << "  --version          -> imprime la version y termina\n"
-         << "  show <var>         -> muestra valor de variable\n"
-         << "  posfix | prefix    -> imprime notacion de ultima expresion\n"
-         << "  tree               -> imprime arbol de ultima expresion\n"
-         << "Asignacion: x = expresion\n"
-         << "Funciones: sqrt, sin, cos, tan, log(base10), ln\n"
-         << "Constantes: pi, e (radianes)\n";
-    continue;
-}
+            cout << "Comandos disponibles:\n"
+                 << "  help               -> esta ayuda\n"
+                 << "  --version          -> imprime la version y termina\n"
+                 << "  show <var>         -> muestra valor de variable\n"
+                 << "  let x = expr       -> alias de asignacion\n"
+                 << "  vars               -> lista variables definidas\n"
+                 << "  del <var>          -> elimina variable (excepto pi, e, ans)\n"
+                 << "  posfix [expr]      -> imprime notacion posfija (de expr o ultima)\n"
+                 << "  prefix [expr]      -> imprime notacion prefija (de expr o ultima)\n"
+                 << "  tree   [expr]      -> imprime arbol (de expr o ultima)\n"
+                 << "Asignacion: x = expresion\n"
+                 << "Funciones: sqrt, sin, cos, tan, log(base10), ln\n"
+                 << "Constantes: pi, e (radianes)\n";
+            continue;
+        }
 
-        if(line=="posfix"){
-            try{ printPosfixFromLast(); } catch(const exception& ex){ if(interactive) cerr << "Error: "<<ex.what()<<"
-"; else cout<<"Error: "<<ex.what()<<"
-"; }
+        // comandos que usan la ultima expresion (ahora con argumento opcional)
+        auto hasArg = [&](const string& cmd)->bool {
+            return line.size() > cmd.size() && line.substr(0, cmd.size()) == cmd && !trim(line.substr(cmd.size())).empty();
+        };
+        auto argOf = [&](size_t k)->string { return trim(line.substr(k)); };
+
+        // posfix
+        if(line=="posfix" || line.rfind("posfix",0)==0){
+            try{
+                if(hasArg("posfix")){
+                    string expr = argOf(6); // despues de "posfix"
+                    auto infix = tk.tokenize(expr);
+                    auto postfix = sy.toPostfix(infix);
+                    for(auto it=postfix.begin(); it!=postfix.end(); ++it) cout << ExprTree::tokenToStr(*it) << ' ';
+                    cout << "\n";
+                }else{
+                    printPosfixFromLast();
+                }
+            } catch(const exception& ex){
+                if(interactive) cerr << "Error: " << ex.what() << "\n";
+                else cout << "Error: " << ex.what() << "\n";
+            }
             continue;
         }
-        if(line=="prefix"){
-            try{ unique_ptr<ExprTree> t(rebuildTreeFromLast()); t->printPrefix(t->root); cout << "
-"; } catch(const exception& ex){ if(interactive) cerr<<"Error: "<<ex.what()<<"
-"; else cout<<"Error: "<<ex.what()<<"
-"; }
+
+        // prefix
+        if(line=="prefix" || line.rfind("prefix",0)==0){
+            try{
+                unique_ptr<ExprTree> t;
+                if(hasArg("prefix")){
+                    string expr = argOf(6); // despues de "prefix"
+                    auto infix = tk.tokenize(expr);
+                    auto postfix = sy.toPostfix(infix);
+                    t.reset(new ExprTree());
+                    t->buildFromPostfix(postfix);
+                }else{
+                    t.reset(rebuildTreeFromLast());
+                }
+                t->printPrefix(t->root); cout << "\n";
+            } catch(const exception& ex){
+                if(interactive) cerr << "Error: " << ex.what() << "\n";
+                else cout << "Error: " << ex.what() << "\n";
+            }
             continue;
         }
-        if(line=="tree"){
-            try{ unique_ptr<ExprTree> t(rebuildTreeFromLast()); t->printTree(t->root); } catch(const exception& ex){ if(interactive) cerr<<"Error: "<<ex.what()<<"
-"; else cout<<"Error: "<<ex.what()<<"
-"; }
+
+        // tree
+        if(line=="tree" || line.rfind("tree",0)==0){
+            try{
+                unique_ptr<ExprTree> t;
+                if(hasArg("tree")){
+                    string expr = argOf(4); // despues de "tree"
+                    auto infix = tk.tokenize(expr);
+                    auto postfix = sy.toPostfix(infix);
+                    t.reset(new ExprTree());
+                    t->buildFromPostfix(postfix);
+                }else{
+                    t.reset(rebuildTreeFromLast());
+                }
+                t->printTree(t->root);
+            } catch(const exception& ex){
+                if(interactive) cerr << "Error: " << ex.what() << "\n";
+                else cout << "Error: " << ex.what() << "\n";
+            }
+            continue;
+        }
+
+        // vars: lista todas las variables ordenadas alfabeticamente 
+        if (line == "vars") {
+            std::vector<std::pair<std::string,double>> kv(env.vars.begin(), env.vars.end());
+            std::sort(kv.begin(), kv.end(),
+                [](const std::pair<std::string,double>& a, const std::pair<std::string,double>& b){
+                    return a.first < b.first;
+                }
+            );
+            for (const auto& p : kv) {
+                cout << p.first << " -> " << std::fixed << std::setprecision(10) << p.second << "\n";
+            }
+            continue;
+        }
+
+
+        // del <var>: elimina una variable (protegemos pi, e, ans)
+        if (line.rfind("del ", 0) == 0) {
+            string var = trim(line.substr(4));
+            if (var.empty()) { cout << "Error: nombre vacio\n"; continue; }
+            if (var == "pi" || var == "e" || var == "ans") {
+                cout << "Error: variable protegida\n"; 
+                continue;
+            }
+            auto it = env.vars.find(var);
+            if (it == env.vars.end()) {
+                cout << "Error: variable no existe\n";
+            } else {
+                env.vars.erase(it);
+                cout << "ok\n";
+            }
             continue;
         }
 
         // show <var>
         if(line.size()>5 && line.substr(0,5)=="show "){
             string var = trim(line.substr(5));
-            try{ double v = env.get(var); cout << var << " -> " << fixed << setprecision(10) << v << "
-"; }
-            catch(const exception& ex){ if(interactive) cerr<<"Error: "<<ex.what()<<"
-"; else cout<<"Error: "<<ex.what()<<"
-"; }
+            try{ double v = env.get(var); cout << var << " -> " << fixed << setprecision(10) << v << "\n"; }
+            catch(const exception& ex){ if(interactive) cerr<<"Error: "<<ex.what() << "\n"; else cout<<"Error: "<<ex.what() << "\n"; }
             continue;
         }
 
-        // asignacion: x = expr (nivel superior)
+        // alias: let x = expr  (reescribimos la linea y dejamos que siga el flujo normal)
+        if (line.rfind("let ", 0) == 0) {
+            line = trim(line.substr(4));
+        }
         int posEq = findTopLevelEq(line);
         if(posEq>0){
             string lhs = trim(line.substr(0,posEq));
             string rhs = trim(line.substr(posEq+1));
-            if(lhs.empty() || !isAlpha(lhs[0])){ if(interactive) cerr<<"Error: LHS invalido"<<"
-"; else cout<<"Error: LHS invalido
-"; continue; }
+            if(lhs.empty() || !isAlphaC(lhs[0])){ if(interactive) cerr<<"Error: LHS invalido" << "\n"; else cout<<"Error: LHS invalido\n"; continue; }
             try{
                 auto infix = tk.tokenize(rhs);
                 auto postfix = sy.toPostfix(infix);
@@ -405,11 +453,8 @@ if (interactive) cout << "EdaCal v2.1 - escribe una expresion o 'exit'\n";
                 double res = ev.eval(tree.root);
                 env.set(lhs, res);
                 env.set("ans", res);
-                cout << lhs << " -> " << fixed << setprecision(10) << res << "
-";
-            } catch(const exception& ex){ if(interactive) cerr<<"Error: "<<ex.what()<<"
-"; else cout<<"Error: "<<ex.what()<<"
-"; }
+                cout << lhs << " -> " << fixed << setprecision(10) << res << "\n";
+            } catch(const exception& ex){ if(interactive) cerr<<"Error: "<<ex.what() << "\n"; else cout<<"Error: "<<ex.what() << "\n"; }
             continue;
         }
 
@@ -421,19 +466,15 @@ if (interactive) cout << "EdaCal v2.1 - escribe una expresion o 'exit'\n";
             ExprTree tree; tree.buildFromPostfix(postfix);
             double res = ev.eval(tree.root);
             env.set("ans", res);
-            cout << "ans -> " << fixed << setprecision(10) << res << "
-";
-        } catch(const exception& ex){ if (interactive) cerr << "Error: " << ex.what() << "
-"; else cout << "Error: " << ex.what() << "
-"; }
+            cout << "ans -> " << fixed << setprecision(10) << res << "\n";
+        } catch(const exception& ex){ if (interactive) cerr << "Error: " << ex.what() << "\n"; else cout << "Error: " << ex.what() << "\n"; }
     }
     return 0;
 }
 
 // ================================
-// Notas de diseño
-// - Cumple con: lista enlazada propia, pila propia, shunting yard (cap. 5), árbol de expresión.
-// - Pendiente para v2: variables (tabla hash), asignación x = expr, comandos show/prefix/posfix/tree separados del REPL.
+// Notas de diseno
+// - Cumple con: lista enlazada propia, pila propia, shunting yard (cap. 5), arbol de expresion.
 // - Tests sugeridos:
 //   1) 6+5 -> 11
 //   2) 5+3*5+2 -> 22

@@ -1,6 +1,6 @@
-sin(pi/2)
-cos(0)
-tan(pi/4)
-log(1000)
-ln(e)
+6+5
+x = 2*ans
+show x
+posfix
+prefix
 exit

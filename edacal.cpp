@@ -1,15 +1,10 @@
-// ================================
-// EdaCal — Skeleton v2.1 (C++11)
-// + Variables (ans y nombres arbitrarios), asignacion: x = expr
-// + Comandos: show <var>, prefix, posfix, tree, help
-// + CLI: --version
-// + Funciones: sqrt, sin, cos, tan, log (base10), ln
-// + Constantes: pi, e
-// Estructuras: LinkedList, Stack, Arbol de Expresion
-// Flujo: Tokenizar (lista) -> Infija→Posfija (pila) -> Arbol -> Evaluar
-// ================================
-
-#include <bits/stdc++.h>
+#include "common.hpp"
+#include "token.hpp"
+#include "linked_list.hpp"
+#include "stack.hpp"
+#include "tokenizer.hpp"
+#include "shunting_yard.hpp"
+#include <memory>
 #ifdef _WIN32
   #include <io.h>
   #define isatty _isatty
@@ -17,154 +12,11 @@
 #endif
 using namespace std;
 
-// -------------------- Utilidad --------------------
-static inline bool isSpace(char c){ return c==' '||c=='\t'||c=='\n'||c=='\r'; }
-static inline bool isDigitC(char c){ return c>='0' && c<='9'; }
-static inline bool isAlphaC(char c){ return (c>='a'&&c<='z')||(c>='A'&&c<='Z')||c=='_'; }
-static inline string ltrim(string s){ size_t i=0; while(i<s.size() && isSpace(s[i])) ++i; return s.substr(i); }
-static inline string rtrim(string s){ int i=(int)s.size()-1; while(i>=0 && isSpace(s[i])) --i; return s.substr(0,i+1); }
-static inline string trim(string s){ return rtrim(ltrim(s)); }
-
-// -------------------- Token --------------------
-enum class TokenType { Number, Identifier, Operator, LParen, RParen, End };
-
-struct Token {
-    TokenType type{TokenType::End};
-    string text;   // para operadores e identificadores
-    double value{0.0};  // para numeros
-    int precedence{ -1 }; // solo si es operador
-    bool rightAssoc{ false }; // ^ es asociativo a derecha
-    bool unary{ false }; // para +/− unario y funciones tipo sqrt/sin/etc.
-};
-
-// -------------------- LinkedList<T> (simple) --------------------
-template<typename T>
-class LinkedList {
-    struct Node { T data; Node* next; Node(const T& d):data(d),next(nullptr){} };
-    Node* head{nullptr};
-    Node* tail{nullptr};
-    size_t n{0};
-public:
-    struct iterator {
-        Node* p; iterator(Node* p=nullptr):p(p){}
-        T& operator*(){ return p->data; }
-        iterator& operator++(){ if(p) p=p->next; return *this; }
-        bool operator!=(const iterator& o) const { return p!=o.p; }
-    };
-    ~LinkedList(){ clear(); }
-    void push_back(const T& x){ Node* nn=new Node(x); if(!head) head=tail=nn; else { tail->next=nn; tail=nn; } ++n; }
-    bool empty() const { return head==nullptr; }
-    size_t size() const { return n; }
-    void clear(){ Node* p=head; while(p){ Node* q=p->next; delete p; p=q; } head=tail=nullptr; n=0; }
-    iterator begin() { return iterator(head); }
-    iterator end()   { return iterator(nullptr); }
-};
-
-// -------------------- Stack<T> usando lista enlazada --------------------
-template<typename T>
-class Stack {
-    struct Node { T data; Node* next; Node(const T& d, Node* nx):data(d),next(nx){} };
-    Node* topNode{nullptr};
-    size_t n{0};
-public:
-    ~Stack(){ while(!empty()) pop(); }
-    void push(const T& x){ topNode=new Node(x, topNode); ++n; }
-    void pop(){ if(!topNode) return; Node* t=topNode; topNode=topNode->next; delete t; --n; }
-    T& top(){ if(!topNode) throw runtime_error("stack empty"); return topNode->data; }
-    const T& top() const { if(!topNode) throw runtime_error("stack empty"); return topNode->data; }
-    bool empty() const { return topNode==nullptr; }
-    size_t size() const { return n; }
-};
-
-// -------------------- Tokenizer: string -> LinkedList<Token> (infija) --------------------
-class Tokenizer {
-    static bool isFunc(const string& name){
-        static const unordered_set<string> F = {"sqrt","sin","cos","tan","log","ln"};
-        return F.count(name)>0;
-    }
-public:
-    LinkedList<Token> tokenize(const string& s){
-        LinkedList<Token> out;
-        size_t i=0; size_t n=s.size();
-        while(i<n){
-            if(isSpace(s[i])){ ++i; continue; }
-            if(isDigitC(s[i]) || (s[i]=='.')){
-                size_t j=i; bool dot=(s[i]=='.'); ++i;
-                while(i<n && (isDigitC(s[i]) || (!dot && s[i]=='.'))){ dot = dot || (s[i]=='.'); ++i; }
-                double val = stod(s.substr(j, i-j));
-                Token t; t.type=TokenType::Number; t.text=""; t.value=val; t.precedence=-1; t.rightAssoc=false; t.unary=false;
-                out.push_back(t); continue;
-            }
-            if(isAlphaC(s[i])){
-                size_t j=i; ++i; while(i<n && (isAlphaC(s[i])||isDigitC(s[i]))) ++i; // identificador o funcion
-                string name = s.substr(j, i-j);
-                if(isFunc(name)){
-                    Token t; t.type=TokenType::Operator; t.text=name; t.value=0; t.precedence=4; t.rightAssoc=true; t.unary=true;
-                    out.push_back(t);
-                } else {
-                    Token t; t.type=TokenType::Identifier; t.text=name; t.value=0; t.precedence=-1; t.rightAssoc=false; t.unary=false;
-                    out.push_back(t);
-                }
-                continue;
-            }
-            // operadores y parentesis
-            char c=s[i++];
-            if(c=='('){ Token t; t.type=TokenType::LParen; t.text="("; t.value=0; t.precedence=-1; t.rightAssoc=false; t.unary=false; out.push_back(t); continue; }
-            if(c==')'){ Token t; t.type=TokenType::RParen; t.text=")"; t.value=0; t.precedence=-1; t.rightAssoc=false; t.unary=false; out.push_back(t); continue; }
-            if(string("+-*/^").find(c)!=string::npos){
-                Token t; t.type=TokenType::Operator; t.text=string(1,c); t.value=0; t.precedence=-1; t.rightAssoc=false; t.unary=false;
-                if(c=='+'||c=='-') t.precedence=1; // se ajusta para unarios luego
-                if(c=='*'||c=='/') t.precedence=2;
-                if(c=='^'){ t.precedence=3; t.rightAssoc=true; }
-                out.push_back(t); continue;
-            }
-            throw runtime_error(string("Caracter no reconocido: ")+c);
-        }
-        return out;
-    }
-};
 
 // -------------------- Helpers de operadores --------------------
 static inline int precedence(const Token& t){ return t.precedence; }
 static inline bool rightAssoc(const Token& t){ return t.rightAssoc; }
 
-// -------------------- Shunting Yard: infija -> posfija (lista) --------------------
-class ShuntingYard {
-public:
-    LinkedList<Token> toPostfix(LinkedList<Token>& infix){
-        LinkedList<Token> out; Stack<Token> ops;
-        Token prev; bool hasPrev=false;
-        for(auto it=infix.begin(); it!=infix.end(); ++it){ Token t=*it;
-            if(t.type==TokenType::Number || t.type==TokenType::Identifier){
-                out.push_back(t); hasPrev=true; prev=t; continue;
-            }
-            if(t.type==TokenType::LParen){ ops.push(t); hasPrev=false; continue; }
-            if(t.type==TokenType::RParen){
-                while(!ops.empty() && ops.top().type!=TokenType::LParen){ out.push_back(ops.top()); ops.pop(); }
-                if(ops.empty()) throw runtime_error("Parentesis desbalanceados");
-                ops.pop(); // saca '('
-                hasPrev=true; continue;
-            }
-            if(t.type==TokenType::Operator){
-                // detectar unario para +/− al inicio o despues de '(' u otro operador
-                if((!hasPrev) || prev.type==TokenType::LParen || prev.type==TokenType::Operator){
-                    if(t.text=="+"||t.text=="-") { t.unary=true; t.precedence=4; t.rightAssoc=true; }
-                }
-                while(!ops.empty() && ops.top().type!=TokenType::LParen && (
-                      (!rightAssoc(t) && precedence(t) <= precedence(ops.top())) ||
-                      ( rightAssoc(t) && precedence(t) <  precedence(ops.top())))){
-                    out.push_back(ops.top()); ops.pop();
-                }
-                ops.push(t); hasPrev=true; prev=t; continue;
-            }
-        }
-        while(!ops.empty()){
-            if(ops.top().type==TokenType::LParen||ops.top().type==TokenType::RParen) throw runtime_error("Parentesis desbalanceados");
-            out.push_back(ops.top()); ops.pop();
-        }
-        return out;
-    }
-};
 
 // -------------------- Arbol de Expresion --------------------
 struct ExprNode {
